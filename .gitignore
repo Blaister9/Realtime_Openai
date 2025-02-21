@@ -1,5 +1,8 @@
-# Ignorar el archivo .env
+# Node.js
+node_modules/
 .env
 
-# Ignorar la carpeta node_modules
-node_modules/
+# Python Virtual Environment
+venv/
+__pycache__/
+embeddings/preguntas.index

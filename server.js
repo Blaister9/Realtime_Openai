@@ -1,8 +1,8 @@
-// server.js - Servidor con optimizaciones para Function Calling y System Prompt
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import fs from "fs";
+import { spawnSync } from "child_process";
 
 dotenv.config();
 
@@ -24,9 +24,9 @@ app.get("/session", async (req, res) => {
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview-2024-12-17",
         voice: "verse",
-        input_audio_format: "pcm16", // Formato optimizado
+        input_audio_format: "pcm16",
         output_audio_format: "pcm16",
-        max_response_output_tokens: 200, // Limitar la respuesta para evitar consumo excesivo
+        max_response_output_tokens: 200,
         turn_detection: {
           "type": "server_vad",
           "threshold": 0.5,
@@ -34,8 +34,7 @@ app.get("/session", async (req, res) => {
           "silence_duration_ms": 500,
           "create_response": true
         },
-        // 🔹 SYSTEM PROMPT: Configura el comportamiento de la IA
-        instructions: "Eres un asistente de atención al cliente creado por Santiago Paz. Solo debes responder preguntas dentro de tu base de conocimientos y no responder temas que no estén en tu base de datos.",
+        instructions: "Eres un asistente creado por Santiago Paz. Solo responde preguntas basadas en la base de datos y no te desvíes del tema.",
         tools: [
           {
             "type": "function",
@@ -64,16 +63,19 @@ app.get("/session", async (req, res) => {
   }
 });
 
-// Endpoint para manejar Function Calling con base de datos JSON
+// Function Calling con FAISS
 app.post("/function_call", async (req, res) => {
   try {
     const { name, arguments: args, call_id } = req.body;
 
     if (name === "buscar_pregunta_frecuente") {
-      const preguntas = JSON.parse(fs.readFileSync("preguntas.json", "utf-8"));
-      const respuesta = preguntas[args.pregunta] || "Lo siento, no tengo una respuesta para esa pregunta.";
+      const preguntaUsuario = args.pregunta.trim();
 
-      console.log("🔹 Function Calling activado. Respondiendo:", respuesta);
+      // 🔹 Ejecutar FAISS para encontrar la mejor respuesta
+      const result = spawnSync("python", ["embeddings/buscar_pregunta_faiss.py", preguntaUsuario], { encoding: "utf-8" });
+      const respuesta = result.stdout.trim();
+
+      console.log(`🔹 Respuesta encontrada: "${respuesta}"`);
 
       return res.json({
         type: "conversation.item.create",
@@ -95,7 +97,4 @@ app.post("/function_call", async (req, res) => {
 // Servir archivos estáticos del cliente
 app.use(express.static("public"));
 
-// Iniciar servidor en el puerto configurado
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
