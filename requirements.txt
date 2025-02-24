@@ -1,0 +1,7 @@
+pyaudio
+websocket-client
+numpy
+soundfile
+python-dotenv
+openai
+webrtcvad
