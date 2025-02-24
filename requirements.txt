@@ -4,4 +4,6 @@ numpy
 soundfile
 python-dotenv
 openai
-webrtcvad
+pydub
+faiss-cpu
+sentence_transformers
