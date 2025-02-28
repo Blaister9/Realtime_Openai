@@ -7,3 +7,5 @@ openai
 pydub
 faiss-cpu
 sentence_transformers
+pandas
+openpyxl

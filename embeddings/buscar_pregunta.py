@@ -5,72 +5,61 @@ import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 
-# Cargar modelo
-model = SentenceTransformer("sentence-transformers/multi-qa-mpnet-base-dot-v1")
+# Precargar recursos una sola vez al importar el módulo
+# ======================================================
 
-# Obtener directorios correctos
+# Configurar paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 
-index_path = os.path.join(current_dir, "faiss_index.bin")
-preguntas_lista_path = os.path.join(current_dir, "preguntas_lista.json")
-preguntas_json_path = os.path.join(root_dir, "preguntas.json")
+# Cargar modelo y datos
+model = SentenceTransformer("sentence-transformers/multi-qa-mpnet-base-dot-v1")
+index = faiss.read_index(os.path.join(current_dir, "faiss_index.bin"))
 
-# Verificar que los archivos existen antes de cargarlos
-if not os.path.exists(index_path):
-    print("Error: No se encontró 'faiss_index.bin'.")
-    sys.exit(1)
+# Cargar preguntas
+with open(os.path.join(current_dir, "preguntas_lista.json"), "r", encoding="utf-8") as f:
+    preguntas = json.load(f)
 
-if not os.path.exists(preguntas_lista_path):
-    print("Error: No se encontró 'preguntas_lista.json'.")
-    sys.exit(1)
+with open(os.path.join(root_dir, "preguntas.json"), "r", encoding="utf-8") as f:
+    preguntas_db = json.load(f)
 
-if not os.path.exists(preguntas_json_path):
-    print(f"Error: No se encontró 'preguntas.json' en {preguntas_json_path}.")
-    sys.exit(1)
+# Función principal
+# ==================
+def faiss_search(pregunta_usuario, threshold=0.5):
+    try:
+        # Generar embedding
+        embedding = model.encode([pregunta_usuario], convert_to_numpy=True)
+        
+        # Buscar en FAISS
+        D, I = index.search(embedding, k=1)
+        
+        # Procesar resultados
+        if I[0][0] < 0 or D[0][0] < threshold:
+            return None
+        
+        mejor_pregunta = preguntas[I[0][0]].strip().lower()
+        
+        # Buscar en la base de datos completa
+        for item in preguntas_db:
+            if item["content"]["pregunta"].strip().lower() == mejor_pregunta:
+                return item["content"]["respuesta"]
+        
+        return None
+    
+    except Exception as e:
+        print(f"Error en FAISS: {str(e)}", file=sys.stderr)
+        return None
 
-# Cargar FAISS y preguntas
-index = faiss.read_index(index_path)
-preguntas = json.load(open(preguntas_lista_path, encoding="utf-8"))
-
-# Obtener la pregunta del usuario
-if len(sys.argv) < 2:
-    print("Error: No se proporcionó una pregunta.")
-    sys.exit(1)
-
-pregunta_usuario = sys.argv[1]
-
-# Generar embedding de la pregunta
-embedding_usuario = model.encode([pregunta_usuario], convert_to_numpy=True)
-
-# Buscar en FAISS
-D, I = index.search(embedding_usuario, k=1)
-
-# Extraer mejor resultado
-mejor_indice = int(I[0][0])
-similitud = D[0][0]
-
-if mejor_indice < 0 or similitud < 0.5:
-    print("Lo siento, no tengo una respuesta para esa pregunta.")
-    sys.exit(0)
-
-# Extraer la mejor pregunta encontrada
-mejor_pregunta = preguntas[mejor_indice]
-
-# Cargar todas las preguntas desde el JSON original
-with open(preguntas_json_path, "r", encoding="utf-8") as file:
-    preguntas_db = json.load(file)
-
-# Buscar la pregunta en el JSON original
-respuesta = None
-for item in preguntas_db:
-    if item["content"]["pregunta"].strip().lower() == mejor_pregunta:
-        respuesta = item["content"]["respuesta"]
-        break
-
-# Si no se encuentra, devolver mensaje de error
-if respuesta:
-    print(respuesta)
-else:
-    print("No tengo información sobre eso.")
-
+# Mantener compatibilidad con ejecución directa
+# ============================================
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Error: Debes proporcionar una pregunta como argumento.", file=sys.stderr)
+        sys.exit(1)
+    
+    respuesta = faiss_search(sys.argv[1])
+    
+    if respuesta:
+        sys.stdout.buffer.write(respuesta.encode('utf-8') + b'\n')
+    else:
+        print("No tengo información sobre eso.")
