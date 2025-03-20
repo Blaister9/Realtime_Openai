@@ -4,17 +4,21 @@ import time
 import wave
 import threading
 import sys
-
+import os
 import pyaudio
 import websocket
 
 from embeddings.buscar_pregunta import faiss_search
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 # ---------------------------
 # CONFIGURACIÓN DE LA API
 # ---------------------------
 API_KEY = os.environ.get("OPENAI_API_KEY")
-REALTIME_MODEL = "gpt-4o-realtime-preview-2024-12-17"
+REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17"
 REALTIME_URL = f"wss://api.openai.com/v1/realtime?model={REALTIME_MODEL}"
 
 HEADERS_DICT = {
@@ -22,10 +26,28 @@ HEADERS_DICT = {
     "OpenAI-Beta": "realtime=v1"
 }
 
+INSTRUCTIONS_DEFAULT = """
+Eres un asistente de voz para la Agencia Nacional de Defensa Jurídica del Estado (ANDJE). Fuiste creada por el equipo de Atención al Ciudadano.
+
+🔹 **Reglas para responder preguntas**:
+1️⃣ Si el usuario hace una pregunta que podría estar en la base de datos, **usa la función get_faq_answer(question)** para encontrar la respuesta correcta.
+2️⃣ Si la función devuelve varias respuestas, **elige la más relevante** y NO mezcles información de respuestas diferentes.
+3️⃣ Si la base de datos no tiene una respuesta clara, responde: *"Lo siento, no encontré esa respuesta en mi base de datos."*
+4️⃣ **No inventes información** ni respondas preguntas fuera de la base de datos.
+
+🔹 **Formato y Entonación**:
+- Habla de forma **calmada y pausada**.
+- Explica claramente los números y direcciones, mencionando cada símbolo con detalle (ej. “numeral” para `#`, “arroba” para `@`).
+- Usa un tono **confiable y preciso**.
+
+**Siempre debes usar la información de la base de datos para responder.** Si necesitas buscar una respuesta, usa la función correspondiente antes de responder.
+"""
+
+
 # ---------------------------
 # CONFIGURACIÓN DE AUDIO
 # ---------------------------
-SAMPLE_RATE = 16000
+SAMPLE_RATE = 24000
 CHUNK_SIZE = 1024
 NUM_CHANNELS = 1
 FORMAT = pyaudio.paInt16  # PCM16
@@ -34,9 +56,23 @@ FORMAT = pyaudio.paInt16  # PCM16
 # BÚSQUEDA EN FAISS
 # ---------------------------
 def get_faq_answer(question: str):
-    """Llama a la búsqueda semántica con embeddings en FAISS."""
-    answer = faiss_search(question, threshold=0.5)
-    return answer
+    """
+    Llama a la búsqueda semántica con embeddings en FAISS y devuelve
+    hasta 2 candidatos, pero SOLO como array de strings.
+    """
+    print(f"[DEBUG] Búsqueda en FAISS: {question}")
+    resultados = faiss_search(question, threshold=0.36, k_value=2)
+    print(f"[DEBUG] Resultados FAISS: {resultados}")
+
+    if not resultados:
+        return "Lo siento, no encontré esa respuesta en mi base de datos."
+
+    # Opción A: devuelves directamente la primera respuesta (top-1):
+    # return resultados[0]
+
+    # Opción B: devuelves TODAS en un JSON minimal:
+    return json.dumps({"answers": resultados}, ensure_ascii=False)
+
 
 # ---------------------------
 # VARIABLES GLOBALES
@@ -63,6 +99,45 @@ def on_message(ws, message):
 
     if event_type == "session.created":
         print("[INFO] Sesión Realtime creada con éxito.")
+        # Configuración inicial de la sesión
+        session_config = {
+            "type": "session.update",
+            "session": {
+                "voice": "sage",  # Configura la voz aquí
+                "instructions": INSTRUCTIONS_DEFAULT,
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.2,
+                    "prefix_padding_ms": 400,
+                    "silence_duration_ms": 1200,
+                    "create_response": True,
+                },
+                "tools": [  # Herramientas iniciales
+                    {
+                        "type": "function",
+                        "name": "get_faq_answer",
+                        "description": "Obtiene una respuesta de las FAQs internas si aplica.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "question": {
+                                    "type": "string",
+                                    "description": "Pregunta del usuario en texto."
+                                }
+                            },
+                            "required": ["question"]
+                        }
+                    }
+                ],
+                "tool_choice": "auto",  # Elección de herramientas
+                "modalities": ["audio", "text"],  # Modalidades
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "max_response_output_tokens": 350,  # Tokens de salida,
+                "temperature":0.6
+            }
+        }
+        ws.send(json.dumps(session_config))
 
     elif event_type == "session.updated":
         print("[INFO] Sesión actualizada.")
@@ -70,12 +145,10 @@ def on_message(ws, message):
     elif event_type == "response.created":
         current_response_id = event["response"]["id"]
         in_response = True
-        barge_in = False
 
     elif event_type == "response.done":
         current_response_id = None
         in_response = False
-        barge_in = False
 
     elif event_type == "input_audio_buffer.speech_started":
         print("[VAD] Comenzó a detectar voz.")
@@ -94,9 +167,6 @@ def on_message(ws, message):
 
     elif event_type == "response.audio.delta":
         # Chunks de audio TTS
-        if barge_in:
-            # Si ya cancelamos, ignoramos lo que sigue
-            return
 
         audio_chunk_b64 = event["delta"]
         audio_chunk = base64.b64decode(audio_chunk_b64)
@@ -106,6 +176,7 @@ def on_message(ws, message):
 
     elif event_type == "response.audio.done":
         print("[INFO] Fin del audio TTS.")
+        time.sleep(1.5)
 
     elif event_type == "error":
         err_msg = event.get("error",{}).get("message","")
@@ -118,75 +189,83 @@ def on_message(ws, message):
         call_id = event["call_id"]
         args_json_str = event["arguments"]
         print(f"\n[FUNC_CALL] El modelo está llamando a la función con args={args_json_str}")
+        
         try:
             args = json.loads(args_json_str)
             question = args.get("question", "")
+            
+            # Intentar obtener respuesta
             answer = get_faq_answer(question)
-            if not answer:
-                answer = "Lo siento, no encontré esa respuesta en mi base de datos."
-
+            
+            # Enviar la respuesta solo si existe
             send_function_call_output(ws, call_id, answer)
 
+        except json.JSONDecodeError:
+            print("[ERROR] No se pudo decodificar los argumentos de la función.")
+            send_function_call_output(ws, call_id, "Hubo un problema procesando tu solicitud.")
+        
         except Exception as e:
-            print("[ERROR parseando args de function call]", e)
+            print(f"[ERROR] Fallo inesperado en la función: {e}")
+            send_function_call_output(ws, call_id, "Ocurrió un error interno.")
+
 
 def on_error(ws, error):
     print("[on_error]", error)
+    if "EOF occurred" in str(error) or "Connection to remote host was lost" in str(error):
+        print("[ERROR] Conexión perdida. Intentando reconectar en 2 segundos...")
+        time.sleep(2)
+        ws.close()
+        main()  # 🔥 Esto reinicia el WebSocket automáticamente
+
 
 def on_close(ws, close_status_code, close_msg):
-    global graceful_shutdown
     print("[on_close] Conexión cerrada:", close_status_code, close_msg)
     stop_audio_streams()
 
-    # Si NO fue un cierre voluntario, lanzamos una excepción
-    # para que se reintente conexión
     if not graceful_shutdown:
-        raise ConnectionError("Conexión finalizada inesperadamente")
+        print("[ERROR] La conexión se cerró inesperadamente. Intentando reconectar...")
+        time.sleep(2)
+        main()  # 🔥 Reinicia el WebSocket
+
 
 def on_open(ws):
     print("[on_open] Conectado a la Realtime API.")
-    # Cambia la voz e instrucciones
-    session_update = {
-        "type": "session.update",
-        "session": {
-            "voice": "ash",
-            "instructions": (
-                "Eres un asistente de voz. Habla con voz suave y tranquilizadora. "
-                "Siempre llama a la función get_faq_answer si el usuario pide datos que puedan estar "
-                "en la base de FAQs. De lo contrario, respóndele directamente en español. "
-                "Habla de forma amable y concisa."
-            ),
-            "turn_detection": {
-                "type": "server_vad",
-                "threshold": 0.4,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 200,
-                "create_response": True,
-                "interrupt_response": True
-            },
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "get_faq_answer",
-                    "description": "Obtiene una respuesta de las FAQs internas si aplica.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "question": {
-                                "type": "string",
-                                "description": "Pregunta del usuario en texto."
-                            }
-                        },
-                        "required": ["question"]
-                    }
-                }
-            ],
-            "tool_choice": "auto",
-            "modalities": ["audio", "text"],
-            "max_response_output_tokens": 200
-        }
-    }
-    ws.send(json.dumps(session_update))
+    # # Cambia la voz e instrucciones
+    # session_update = {
+    #     "type": "session.update",
+    #     "session": {
+    #         "instructions": INSTRUCTIONS_DEFAULT,
+    #         "turn_detection": {
+    #             "type": "server_vad",
+    #             "threshold": 0.4,
+    #             "prefix_padding_ms": 300,
+    #             "silence_duration_ms": 200,
+    #             "create_response": True,
+    #             "interrupt_response": True
+    #         },
+    #         "tools": [
+    #             {
+    #                 "type": "function",
+    #                 "name": "get_faq_answer",
+    #                 "description": "Obtiene una respuesta de las FAQs internas si aplica.",
+    #                 "parameters": {
+    #                     "type": "object",
+    #                     "properties": {
+    #                         "question": {
+    #                             "type": "string",
+    #                             "description": "Pregunta del usuario en texto."
+    #                         }
+    #                     },
+    #                     "required": ["question"]
+    #                 }
+    #             }
+    #         ],
+    #         "tool_choice": "auto",
+    #         "modalities": ["audio", "text"],
+    #         "max_response_output_tokens": 510
+    #     }
+    # }
+    # ws.send(json.dumps(session_update))
 
 
 # ---------------------------
@@ -255,13 +334,16 @@ def send_function_call_output(ws, call_id, function_result):
     }
     ws.send(json.dumps(output_item_event))
 
-    resp_event = {
+    # 🔥 Forzar al modelo a generar una respuesta textual después de recibir la función
+    response_create_event = {
         "type": "response.create",
         "response": {
-            "modalities": ["audio", "text"]
+            "modalities": ["audio", "text"],  # Asegurar respuesta en audio y texto
+            "instructions": "Usa la información de la función llamada para responder de manera clara y concisa."
         }
     }
-    ws.send(json.dumps(resp_event))
+    ws.send(json.dumps(response_create_event))
+
 
 # ---------------------------
 # run_realtime
@@ -287,7 +369,7 @@ def run_realtime():
     )
 
     # Ajustas ping_interval y ping_timeout (por defecto None)
-    ws_thread = threading.Thread(target=lambda: ws.run_forever(ping_interval=None, ping_timeout=120), daemon=True)
+    ws_thread = threading.Thread(target=lambda: ws.run_forever(ping_interval=60, ping_timeout=59), daemon=True)
     ws_thread.start()
 
     # Esperamos un rato a que se establezca la conexión
@@ -336,7 +418,7 @@ def main():
             break
         except Exception as e:
             print(f"[MAIN] Error no controlado: {e}")
-            time.sleep(5)
+            time.sleep(2)
             print("[MAIN] Reintentando conexión...")
             continue
 

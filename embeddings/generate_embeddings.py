@@ -27,9 +27,11 @@ with open(JSON_FILE_PATH, "r", encoding="utf-8") as file:
 preguntas = []
 mapeo_preguntas = {}  # Para mapear índices a preguntas originales
 
-for idx, item in enumerate(preguntas_db):
-    pregunta = item["content"]["pregunta"].strip().lower()
-    respuesta = item["content"]["respuesta"].strip()
+preguntas_lista = preguntas_db["preguntas"]
+
+for idx, item in enumerate(preguntas_lista):
+    pregunta = item["pregunta"].strip().lower()
+    respuesta = item["respuesta"].strip()
     metadata = item.get("metadata", {})
 
     preguntas.append(pregunta)
