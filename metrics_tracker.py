@@ -327,12 +327,16 @@ class CallMetrics:
         
     def _save_metrics_json(self):
         """Guarda las métricas en formato JSON"""
-        metrics_file = os.path.join(self.metrics_dir, f"{self.call_id}.json")
-        
-        with open(metrics_file, "w", encoding="utf-8") as f:
-            json.dump(self.metrics, f, indent=2)
+        try:
+            metrics_file = os.path.join(self.metrics_dir, f"{self.call_id}.json")
             
-        logger.info(f"Métricas guardadas en {metrics_file}")
+            with open(metrics_file, "w", encoding="utf-8") as f:
+                json.dump(self.metrics, f, indent=2)
+                
+            logger.info(f"Métricas guardadas en {metrics_file}")
+        except Exception as e:
+            logger.error(f"Error guardando métricas JSON: {e}")
+            logger.error(traceback.format_exc())
         
     def _append_to_csv(self):
         """Añade las métricas a un archivo CSV acumulativo"""

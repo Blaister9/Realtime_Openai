@@ -175,7 +175,7 @@ def main():
             logger.info(f"Texto a convertir: {assistant_response}")
             
             # Convertir texto a voz
-            speech_instructions = "Hablar en un tono natural y profesional para un sistema IVR."
+            speech_instructions = "Habla en un tono natural, profesional y cálido. Velocidad moderada para mejor comprensión telefónica. Pronuncia bien las Arroba(@), PQRSDF, ANDJE, y otras frases de forma clara y precisa."
             audio_response = text_to_speech(assistant_response, OPENAI_API_KEY, instructions=speech_instructions)
             
             if not audio_response:

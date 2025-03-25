@@ -53,7 +53,9 @@ def create_llm_payload(transcript, add_tools=True):
     payload = {
         "model": OPENAI_LLM_MODEL,
         "messages": messages,
-        "temperature": 0.7  # Ajustar según necesidad
+        "temperature": 0.4,
+        "max_tokens": 350,
+        "presence_penalty": -0.1  # Ligero desincentivo a repetirse
     }
     
     # Añadir herramientas para consultar la base de conocimiento si se requiere
