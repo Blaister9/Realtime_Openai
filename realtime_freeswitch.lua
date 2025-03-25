@@ -7,16 +7,16 @@ local pregunta_audio = "/home/sysadmin/encuesta_IVR/tmp/pregunta.wav"
 -- Loop principal para múltiples interacciones
 while session:ready() do
     -- Solicitar al usuario que haga su pregunta
-    session:streamFile("/usr/share/freeswitch/sounds/custom_es/P_DejeMensaje_Original.wav")
+    session:streamFile("/home/sysadmin/encuesta_IVR/sounds/Beep_Inicio.wav")
 
     -- Grabar pregunta del usuario
-    session:execute("record", pregunta_audio .. " 30 200 3")
+    session:execute("record", pregunta_audio .. " 30 100 2")
 
     -- Ejecutar script Python en segundo plano
     os.execute("/home/sysadmin/encuesta_IVR/venv/bin/python3 /home/sysadmin/encuesta_IVR/scripts/asistente_virtual.py " .. pregunta_audio .. " > /dev/null 2>&1 &")
 
     -- Mensaje de espera mientras procesa
-    session:streamFile("/usr/share/freeswitch/sounds/custom_es/P_Gracias_Original.wav")
+    session:streamFile("/home/sysadmin/encuesta_IVR/sounds/Beep_Pensar.wav")
 
     -- Esperar la respuesta de Python con un tiempo límite (ej. 20 segundos)
     local espera = 0
@@ -43,7 +43,7 @@ while session:ready() do
         session:streamFile(audio_respuesta)
     else
         -- Informar que no se generó respuesta
-        session:streamFile("/usr/share/freeswitch/sounds/custom_es/P_Invalida_Original.wav")
+        session:streamFile("/home/sysadmin/encuesta_IVR/sounds/Beep_Error.wav")
     end
 
     -- Limpiar archivos temporales para siguiente interacción
