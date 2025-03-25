@@ -46,6 +46,20 @@ while session:ready() do
         session:streamFile("/home/sysadmin/encuesta_IVR/sounds/Beep_Error.wav")
     end
 
+    -- Verificar si se solicitó transferencia a agente
+    local flag_file = "/tmp/transfer_flag.txt"
+    local f = io.open(flag_file, "r")
+    if f then
+        f:close()
+        -- Eliminar el archivo para próximas llamadas
+        os.remove(flag_file)
+
+        -- Hacer la transferencia
+        freeswitch.consoleLog("INFO", "Transferencia solicitada, redirigiendo a agente\n")
+        session:execute("transfer", "agente XML default")
+        break
+    end
+
     -- Limpiar archivos temporales para siguiente interacción
     os.execute("rm -f " .. audio_respuesta)
     os.execute("rm -f " .. pregunta_audio)

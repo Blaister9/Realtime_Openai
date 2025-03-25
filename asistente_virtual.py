@@ -159,6 +159,11 @@ def main():
                                     output_tokens=current_output + usage.get("completion_tokens", 0)
                                 )
         
+                if tool_call["function"]["name"] == "transfer_to_agent":
+                    motivo = extract_function_args(tool_call)
+                    with open("/tmp/transfer_flag.txt", "w") as f:
+                        f.write("1")
+        
         # Finalizar métricas del paso LLM
         metrics.end_step("llm")
         

@@ -77,16 +77,34 @@ def create_llm_payload(transcript, add_tools=True):
                         "required": ["question"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "transfer_to_agent",
+                    "description": "Solicita la transferencia a un agente humano cuando el usuario está insatisfecho o frustrado o el sistema no es capaz de responder la inquietud.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "motivo": {
+                                "type": "string",
+                                "description": "Razón por la cual se requiere la transferencia. Ej: frustración, pregunta no resuelta, solicitud directa."
+                            }
+                        },
+                        "required": ["motivo"]
+                    }
+                }
             }
         ]
         
-        # Forzar el uso de la función si es apropiado
-        payload["tool_choice"] = {
-            "type": "function",
-            "function": {
-                "name": "get_faq_answer"
-            }
-        }
+        # # Forzar el uso de la función si es apropiado
+        # payload["tool_choice"] = {
+        #     "type": "function",
+        #     "function": {
+        #         "name": "get_faq_answer",
+        #         "name": "transfer_to_agent"
+        #     }
+        # }
     
     return payload
 
@@ -118,6 +136,15 @@ def create_second_llm_payload(transcript, tool_calls, tool_response):
                 "name": "get_faq_answer",
                 "content": json.dumps({
                     "answer": tool_response if tool_response else "No se encontró información relacionada en nuestra base de conocimiento."
+                })
+            })
+        elif tool_call["function"]["name"] == "transfer_to_agent":
+            message.append({
+                "role":"tool",
+                "tool_call_id":tool_call["id"],
+                "name":"transfer_to_agent",
+                "content":json.dumps({
+                    "answer": tool_response if tool_response else "No se pudo transferir a un agente(?)"
                 })
             })
     
