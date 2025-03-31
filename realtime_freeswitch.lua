@@ -47,7 +47,7 @@ while session:ready() do
     end
 
     -- Verificar si se solicitó transferencia a agente
-    local flag_file = "/tmp/transfer_flag.txt"
+    local flag_file = "/home/sysadmin/encuesta_IVR/tmp/transfer_flag.txt"
     local f = io.open(flag_file, "r")
     if f then
         f:close()
