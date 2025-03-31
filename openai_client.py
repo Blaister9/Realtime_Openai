@@ -248,13 +248,24 @@ def extract_function_args(tool_call):
         tool_call (dict): Información de llamada a función
         
     Returns:
-        str or None: Argumento de pregunta o None si hay error
+        str or None: Argumento extraído o None si hay error
     """
     try:
+        function_name = tool_call["function"]["name"]
         function_args = json.loads(tool_call["function"]["arguments"])
-        question = function_args.get("question", "")
-        logger.info(f"Pregunta para FAISS: {question[:100]}...")
-        return question
+        
+        if function_name == "get_faq_answer":
+            question = function_args.get("question", "")
+            logger.info(f"Pregunta para FAISS: {question[:100]}...")
+            return question
+        elif function_name == "transfer_to_agent":
+            motivo = function_args.get("motivo", "")
+            logger.info(f"Motivo para transferencia: {motivo[:100]}...")
+            return motivo
+        else:
+            logger.warning(f"Función desconocida: {function_name}")
+            return None
+            
     except Exception as e:
         logger.error(f"Error extrayendo argumentos de función: {e}")
         logger.error(traceback.format_exc())
