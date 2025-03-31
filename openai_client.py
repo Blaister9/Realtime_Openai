@@ -139,7 +139,7 @@ def create_second_llm_payload(transcript, tool_calls, tool_response):
                 })
             })
         elif tool_call["function"]["name"] == "transfer_to_agent":
-            message.append({
+            messages.append({
                 "role":"tool",
                 "tool_call_id":tool_call["id"],
                 "name":"transfer_to_agent",
