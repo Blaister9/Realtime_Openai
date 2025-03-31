@@ -179,8 +179,8 @@ def main():
             
             logger.info(f"Texto a convertir: {assistant_response}")
             
-            # Convertir texto a voz
-            speech_instructions = "Habla en un tono natural, profesional y cálido. Velocidad moderada para mejor comprensión telefónica. Pronuncia bien las Arroba(@), PQRSDF, ANDJE, y otras frases de forma clara y precisa."
+            # Convertir texto a voz            
+            speech_instructions = """Habla en tono profesional, cálido y moderadamente pausado. Pronuncia con absoluta claridad términos específicos como ANDJE (pronunciado letra por letra: A-N-D-J-E), PQRSDF (P-Q-R-S-D-F), números de referencia, correos electrónicos (destacando el símbolo @ como "arroba") y direcciones web. Usa entonación natural con ligeras pausas entre frases para facilitar comprensión telefónica."""
             audio_response = text_to_speech(assistant_response, OPENAI_API_KEY, instructions=speech_instructions)
             
             if not audio_response:
